@@ -1,52 +1,75 @@
 # -*- coding: utf-8 -*-
 """
-Created on Fri May 14 09:31:56 2021
+Created on Fri May 14 13:57:28 2021
 
 @author: raven002
 """
+
+
+print("importing base libraries...")
 import pandas as pd
+import re
+import nltk
+print("base libraries imported")
+
+#importing the data set
 print("reading in Data...")
 df = pd.read_excel ("C:/Users/raven002/OneDrive - Guidehouse/Desktop/FIMA NLP Project/reason_justification.xlsx", converters={'Justification': lambda x: str(x)})
 print("data loaded successfully")
 
-#dropping nas
-df['Justification']=df['Justification'].fillna("blank")
+#setting x and y values
+y = df.ReasonRequestID
+x = df.Justification
 
-
-import nltk
+print("removing special characters and lemmatization...")
+from nltk.stem import WordNetLemmatizer
 from nltk.tokenize import RegexpTokenizer
-from nltk.stem import WordNetLemmatizer,PorterStemmer
 from nltk.corpus import stopwords
-import xgboost
-import re
+nltk.download('wordnet')
+nltk.download('stopwords')
+
+documents = []
+
 lemmatizer = WordNetLemmatizer()
-stemmer = PorterStemmer() 
 
-def preprocess(sentence):
-    sentence=str(sentence)
-    sentence = sentence.lower()
-    sentence=sentence.replace('{html}',"") 
-    cleanr = re.compile('<.*?>')
-    cleantext = re.sub(cleanr, '', sentence)
-    rem_url=re.sub(r'http\S+', '',cleantext)
-    rem_num = re.sub('[0-9]+', '', rem_url)
+def preprocess(document):
+    # Remove all the special characters
+    document = re.sub(r'\W', ' ', str(document))
+    
+    # remove all single characters
+    document = re.sub(r'\s+[a-zA-Z]\s+', ' ', document)
+    
+    # Remove single characters from the start
+    document = re.sub(r'\^[a-zA-Z]\s+', ' ', document) 
+    
+    # Substituting multiple spaces with single space
+    document = re.sub(r'\s+', ' ', document, flags=re.I)
+    
+    # Removing prefixed 'b'
+    document = re.sub(r'^b\s+', '', document)
+    
+    # Converting to Lowercase
+    document = document.lower()
+    
+    #tokenizing
     tokenizer = RegexpTokenizer(r'\w+')
-    tokens = tokenizer.tokenize(rem_num)  
-    filtered_words = [w for w in tokens if len(w) > 2 if not w in stopwords.words('english')]
-    stem_words=[stemmer.stem(w) for w in filtered_words]
-    lemma_words=[lemmatizer.lemmatize(w) for w in stem_words]
-    return " ".join(lemma_words)
+    document = tokenizer.tokenize(document)  
+    document = [w for w in document if len(w) > 2 if not w in stopwords.words('english')]
 
+    # Lemmatization
+    document = [lemmatizer.lemmatize(word) for word in document]
+    return " ".join(document)
 
 df['Justification']=df['Justification'].map(lambda s:preprocess(s)) 
-
+    
+print("special characters removed, lemmatization complete")
 
 #setting x and y values
 y = df.ReasonRequestID
 x = df.Justification
 
 from sklearn.feature_extraction.text import CountVectorizer
-vectorizer = CountVectorizer(min_df=150, max_df=.8, stop_words=stopwords.words('english'))
+vectorizer = CountVectorizer(min_df=200, max_df=.8, stop_words=stopwords.words('english'))
 x = vectorizer.fit_transform(x).toarray()
 
 #reweighting based on tf-idf values
@@ -62,7 +85,7 @@ x_train, x_test, y_train, y_test = train_test_split(x, y, test_size=0.2, random_
 #importing the gradient boosted classifier
 print("uploading gradient boosted classifier")
 from xgboost import XGBClassifier
-classifier = XGBClassifier(max_depth=8, learning_rate=0.3, random_state=0)
+classifier = XGBClassifier(max_depth=8, learning_rate=0.2, random_state=0)
 classifier.fit(x_train, y_train)
 
 #from sklearn.ensemble import RandomForestClassifier
